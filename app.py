@@ -82,7 +82,7 @@ if prompt := st.chat_input("Ketik respons Anda di sini..."):
         st.markdown(prompt)
 
     # Kirim ke Claude API
-    with st.chat_message("assistant"):
+	with st.chat_message("assistant"):
         message_placeholder = st.empty()
         
         # Konversi format riwayat ke Anthropic API
