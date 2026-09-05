@@ -86,22 +86,28 @@ if prompt := st.chat_input("Ketik respons Anda di sini..."):
         message_placeholder = st.empty()
         
         # Konversi format riwayat ke Anthropic API
+	with st.chat_message("assistant"):
+        message_placeholder = st.empty()
+        
         api_messages = [
             {"role": m["role"], "content": m["content"]}
             for m in st.session_state.messages
         ]
         
-        response = client.messages.create(
-            model="claude-sonnet-5",
-            max_tokens=1000,
-            system=SYSTEM_PROMPT,
-            messages=api_messages
-        )
-        
-        # full_response = response.content[0].text
-	# SETELAH DIPERBAIKI:
-        full_response = "".join([block.text for block in response.content if block.type == "text"])
-        message_placeholder.markdown(full_response)
+        # Generator Streaming dengan max_tokens lebih besar
+        def generate_stream():
+            with client.messages.stream(
+                model="claude-sonnet-5",
+                max_tokens=4000,
+                system=SYSTEM_PROMPT,
+                messages=api_messages,
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+
+        full_response = message_placeholder.write_stream(generate_stream())
+
+	message_placeholder.markdown(full_response)
         
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
