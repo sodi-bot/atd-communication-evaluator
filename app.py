@@ -82,12 +82,12 @@ if prompt := st.chat_input("Ketik respons Anda di sini..."):
         st.markdown(prompt)
 
     # Kirim ke Claude API
-	with st.chat_message("assistant"):
+    with st.chat_message("assistant"):
         message_placeholder = st.empty()
         
         # Konversi format riwayat ke Anthropic API
-	with st.chat_message("assistant"):
-        message_placeholder = st.empty()
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
         
         api_messages = [
             {"role": m["role"], "content": m["content"]}
@@ -107,7 +107,7 @@ if prompt := st.chat_input("Ketik respons Anda di sini..."):
 
         full_response = message_placeholder.write_stream(generate_stream())
 
-	message_placeholder.markdown(full_response)
+        #message_placeholder.markdown(full_response)
         
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
