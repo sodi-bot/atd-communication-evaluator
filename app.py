@@ -1,6 +1,7 @@
 import streamlit as st
 import anthropic
 import os
+import pypdf # Tambahkan import ini di bagian paling atas app.py
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
@@ -15,17 +16,38 @@ st.caption("Powered by Claude 3.5 Sonnet & HBR Business Cases")
 # 1. Fungsi Pembaca Project Knowledge Otomatis dari Folder knowledge/
 def load_project_knowledge(folder_path="knowledge"):
     """
-    Membaca seluruh file teks (.txt dan .md) di folder knowledge/ 
-    dan menggabungkannya menjadi satu konteks pengetahuan dinamis.
+    Membaca file .pdf, .txt, dan .md dari folder knowledge/
+    dan mengekstraksi teksnya secara otomatis.
     """
     knowledge_text = ""
     if os.path.exists(folder_path):
         for file_name in os.listdir(folder_path):
-            if file_name.endswith(".txt") or file_name.endswith(".md"):
-                file_path = os.path.join(folder_path, file_name)
-                with open(file_path, "r", encoding="utf-8") as f:
-                    knowledge_text += f"\n\n--- FILE KNOWLEDGE: {file_name} ---\n"
-                    knowledge_text += f.read()
+            if file_name.startswith("."):
+                continue
+                
+            file_path = os.path.join(folder_path, file_name)
+            if os.path.isfile(file_path):
+                # 1. Jika File PDF
+                if file_name.lower().endswith(".pdf"):
+                    try:
+                        reader = pypdf.PdfReader(file_path)
+                        pdf_text = ""
+                        for page in reader.pages:
+                            pdf_text += page.extract_text() or ""
+                        knowledge_text += f"\n\n--- FILE KNOWLEDGE (PDF): {file_name} ---\n"
+                        knowledge_text += pdf_text
+                    except Exception as e:
+                        print(f"Gagal membaca PDF {file_name}: {e}")
+                
+                # 2. Jika File Teks (.txt / .md atau tanpa ekstensi)
+                else:
+                    try:
+                        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                            knowledge_text += f"\n\n--- FILE KNOWLEDGE: {file_name} ---\n"
+                            knowledge_text += f.read()
+                    except Exception as e:
+                        print(f"Gagal membaca file {file_name}: {e}")
+                        
     return knowledge_text
 
 # Cek API Key dari secrets (jika ada), jika tidak ada gunakan input sidebar
@@ -156,7 +178,7 @@ if st.sidebar.button("🔄 Mulai Sesi Baru"):
 # Tampilan Indikator File Knowledge di Sidebar
 with st.sidebar.expander("📁 Loaded Knowledge Files"):
     if os.path.exists("knowledge"):
-        files = [f for f in os.listdir("knowledge") if f.endswith(('.txt', '.md'))]
+        files = [f for f in os.listdir("knowledge") if not f.startswith(".")]
         if files:
             for f in files:
                 st.write(f"✅ {f}")
