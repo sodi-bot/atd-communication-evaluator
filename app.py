@@ -1,5 +1,6 @@
 import streamlit as st
 import anthropic
+import os
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
@@ -10,6 +11,22 @@ st.set_page_config(
 
 st.title("🎯 ATD Communication Evaluator")
 st.caption("Powered by Claude 3.5 Sonnet & HBR Business Cases")
+
+# 1. Fungsi Pembaca Project Knowledge Otomatis dari Folder knowledge/
+def load_project_knowledge(folder_path="knowledge"):
+    """
+    Membaca seluruh file teks (.txt dan .md) di folder knowledge/ 
+    dan menggabungkannya menjadi satu konteks pengetahuan dinamis.
+    """
+    knowledge_text = ""
+    if os.path.exists(folder_path):
+        for file_name in os.listdir(folder_path):
+            if file_name.endswith(".txt") or file_name.endswith(".md"):
+                file_path = os.path.join(folder_path, file_name)
+                with open(file_path, "r", encoding="utf-8") as f:
+                    knowledge_text += f"\n\n--- FILE KNOWLEDGE: {file_name} ---\n"
+                    knowledge_text += f.read()
+    return knowledge_text
 
 # Cek API Key dari secrets (jika ada), jika tidak ada gunakan input sidebar
 api_key = None
@@ -28,13 +45,16 @@ if not api_key:
 
 client = anthropic.Anthropic(api_key=api_key)
 
-# 2. System Prompt Final
-SYSTEM_PROMPT = """
+# Load Konten dari Folder knowledge/
+knowledge_content = load_project_knowledge("knowledge")
+
+# 2. System Prompt Final (Menggabungkan Prompt Inti + Project Knowledge Dinamis)
+BASE_SYSTEM_PROMPT = """
 [PERAN DAN IDENTITAS]
 Kamu adalah "ATD Communication Evaluator". Tugas utama kamu adalah menilai tingkat kemahiran (proficiency level) pengguna pada kompetensi "Communication" ATD melalui SIMULASI PERCAKAPAN DINAMIS (BLIND ROLEPLAY) berbasis studi kasus bisnis nyata.
 
 [CASE LIBRARY INSTRUCTION]
-Kamu memiliki akses ke dokumen studi kasus bisnis di dalam Project Knowledge.
+Kamu memiliki akses ke dokumen studi kasus bisnis dan referensi standar TDBoK di dalam [DYNAMIC PROJECT KNOWLEDGE] di bawah.
 - Di awal setiap sesi baru, pilih 1 latar belakang krisis bisnis dari studi kasus yang tersedia secara acak.
 - Kombinasikan juga secara acak peran kamu (Atasan Impasien / Rekan Kerja Resisten / Klien Eksternal Kritis) dan nada emosi awal (Skeptis / Kecewa / Cemas / Terdesak Waktu).
 
@@ -69,7 +89,7 @@ Kamu memiliki akses ke dokumen studi kasus bisnis di dalam Project Knowledge.
 8. Skill in articulating and conveying value propositions to gain agreement, support, and/or buy-in from stakeholders.
 
 [TDBOK EVALUATION RUBRICS & ANCHORS]
-Gunakan acuan teoritis TDBoK 2nd Edition dari Project Knowledge berikut saat mengamati dan menilai respons pengguna:
+Gunakan acuan teoritis TDBoK 2nd Edition berikut saat mengamati dan menilai respons pengguna:
 - Skill #1 & #5 (The 6 Cs): Evaluasi kejelasan (Clear), ketepatan fakta/tata bahasa (Correct), kelengkapan (Complete), keringkasan (Concise), alur logis (Coherent), dan kesopanan/netralitas (Courteous).
 - Skill #2 (Active Listening Clusters): Amati apakah pengguna merefleksikan kembali poin stakeholder (Reflecting), mengajukan pertanyaan tanpa menghakimi (Following), dan berfokus pada substansi masalah (Attending).
 - Skill #3 & #4 (Persuasion Triad & Social Styles): Amati keseimbangan Logos (logika/data), Ethos (kredibilitas/keahlian), dan Pathos (koneksi emosi). Sesuaikan analisis dengan gaya komunikasi lawan bicara (Analytical/Driver/Amiable/Expressive).
@@ -78,6 +98,14 @@ Gunakan acuan teoritis TDBoK 2nd Edition dari Project Knowledge berikut saat men
 
 [MEKANISME PENILAIAN AKHIR]
 Setelah percakapan selesai (kamu mengakhiri roleplay), sajikan "ATD Communication Scorecard" secara lengkap yang mencakup Skor Level (1-5) ke-8 Skill Statements beserta catatan observasi spesifik, Overall Rating, Critical Gap Analysis, dan Rekomendasi Pelatihan.
+"""
+
+# Penggabungan System Prompt Inti dengan seluruh file dari folder knowledge/
+FINAL_SYSTEM_PROMPT = f"""
+{BASE_SYSTEM_PROMPT}
+
+[DYNAMIC PROJECT KNOWLEDGE - DOKUMEN REFERENSI & STUDI KASUS]
+{knowledge_content}
 """
 
 # 3. Inisialisasi Riwayat Obrolan
@@ -96,33 +124,27 @@ if prompt := st.chat_input("Ketik respons Anda di sini..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Kirim ke Claude API
+    # Kirim ke Claude API dengan Streaming
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        
-        # Konversi format riwayat ke Anthropic API
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
         
         api_messages = [
             {"role": m["role"], "content": m["content"]}
             for m in st.session_state.messages
         ]
         
-        # Generator Streaming dengan max_tokens lebih besar
+        # Generator Streaming
         def generate_stream():
             with client.messages.stream(
                 model="claude-sonnet-5",
                 max_tokens=4000,
-                system=SYSTEM_PROMPT,
+                system=FINAL_SYSTEM_PROMPT,
                 messages=api_messages,
             ) as stream:
                 for text in stream.text_stream:
                     yield text
 
         full_response = message_placeholder.write_stream(generate_stream())
-
-        #message_placeholder.markdown(full_response)
         
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
