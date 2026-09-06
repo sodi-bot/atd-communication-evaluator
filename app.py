@@ -152,3 +152,15 @@ if prompt := st.chat_input("Ketik respons Anda di sini..."):
 if st.sidebar.button("🔄 Mulai Sesi Baru"):
     st.session_state.messages = []
     st.rerun()
+
+# Tampilan Indikator File Knowledge di Sidebar
+with st.sidebar.expander("📁 Loaded Knowledge Files"):
+    if os.path.exists("knowledge"):
+        files = [f for f in os.listdir("knowledge") if f.endswith(('.txt', '.md'))]
+        if files:
+            for f in files:
+                st.write(f"✅ {f}")
+        else:
+            st.warning("Folder knowledge kosong!")
+    else:
+        st.error("Folder knowledge tidak ditemukan!")
