@@ -175,7 +175,7 @@ if prompt := st.chat_input("Ketik respons Anda di sini..."):
         def generate_stream():
             with client.messages.stream(
                 model="claude-sonnet-5",
-                max_tokens=4000,
+                max_tokens=8000,
                 system=FINAL_SYSTEM_PROMPT,
                 messages=api_messages,
             ) as stream:
