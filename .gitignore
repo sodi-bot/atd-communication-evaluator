@@ -1,4 +1,15 @@
-venv/
+# Abaikan folder rahasia Streamlit
 .streamlit/secrets.toml
+
+# Abaikan cache Python
 __pycache__/
+*.pyc
+
+# Abaikan virtual environment (jika ada)
+venv/
+.venv/
+
+# Abaikan file metadata macOS
 .DS_Store
+*.DS_Store
+**/.DS_Store

@@ -1,7 +1,8 @@
 import streamlit as st
 import anthropic
 import os
-import pypdf # Tambahkan import ini di bagian paling atas app.py
+import random
+import PyPDF2
 
 # Konfigurasi Halaman Streamlit
 st.set_page_config(
@@ -13,42 +14,62 @@ st.set_page_config(
 st.title("🎯 ATD Communication Evaluator")
 st.caption("Powered by Claude 3.5 Sonnet & HBR Business Cases")
 
-# 1. Fungsi Pembaca Project Knowledge Otomatis dari Folder knowledge/
-def load_project_knowledge(folder_path="knowledge"):
+# Path ke Folder Knowledge
+TDBOK_FOLDER = "knowledge"       # Isi: 1 File TDBoK Communication PDF
+CASES_FOLDER = "knowledge/cases"       # Isi: 4 File Case Study HBR PDF
+
+def load_tdbok_knowledge():
+    """Membaca file TDBoK yang selalu menjadi acuan utama."""
+    text_content = ""
+    if os.path.exists(TDBOK_FOLDER):
+        for file in os.listdir(TDBOK_FOLDER):
+            if file.endswith(".pdf"):
+                file_path = os.path.join(TDBOK_FOLDER, file)
+                try:
+                    reader = PyPDF2.PdfReader(file_path)
+                    for page in reader.pages:
+                        text_content += page.extract_text() or ""
+                except Exception as e:
+                    st.error(f"Gagal membaca {file}: {e}")
+    return text_content
+
+def load_random_case_study():
+    """Pilih & baca HANYA 1 file studi kasus HBR secara acak."""
+    text_content = ""
+    if os.path.exists(CASES_FOLDER):
+        case_files = [f for f in os.listdir(CASES_FOLDER) if f.endswith(".pdf")]
+        if case_files:
+            # Pilih 1 file kasus secara acak
+            selected_file = random.choice(case_files)
+            file_path = os.path.join(CASES_FOLDER, selected_file)
+            
+            # Simpan nama kasus terpilih ke session state agar bisa ditampilkan di UI
+            st.session_state["selected_case_name"] = selected_file
+            
+            try:
+                reader = PyPDF2.PdfReader(file_path)
+                for page in reader.pages:
+                    text_content += page.extract_text() or ""
+            except Exception as e:
+                st.error(f"Gagal membaca {selected_file}: {e}")
+    return text_content
+
+def get_combined_project_knowledge():
+    """Menggabungkan TDBoK + 1 Case Study Terpilih."""
+    tdbok_text = load_tdbok_knowledge()
+    case_text = load_random_case_study()
+    
+    return f"""
+    [TDBOK REFERENCE FRAMEWORK]
+    {tdbok_text}
+    
+    [SELECTED CASE STUDY FOR THIS SESSION]
+    {case_text}
     """
-    Membaca file .pdf, .txt, dan .md dari folder knowledge/
-    dan mengekstraksi teksnya secara otomatis.
-    """
-    knowledge_text = ""
-    if os.path.exists(folder_path):
-        for file_name in os.listdir(folder_path):
-            if file_name.startswith("."):
-                continue
-                
-            file_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(file_path):
-                # 1. Jika File PDF
-                if file_name.lower().endswith(".pdf"):
-                    try:
-                        reader = pypdf.PdfReader(file_path)
-                        pdf_text = ""
-                        for page in reader.pages:
-                            pdf_text += page.extract_text() or ""
-                        knowledge_text += f"\n\n--- FILE KNOWLEDGE (PDF): {file_name} ---\n"
-                        knowledge_text += pdf_text
-                    except Exception as e:
-                        print(f"Gagal membaca PDF {file_name}: {e}")
-                
-                # 2. Jika File Teks (.txt / .md atau tanpa ekstensi)
-                else:
-                    try:
-                        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                            knowledge_text += f"\n\n--- FILE KNOWLEDGE: {file_name} ---\n"
-                            knowledge_text += f.read()
-                    except Exception as e:
-                        print(f"Gagal membaca file {file_name}: {e}")
-                        
-    return knowledge_text
+
+# Inisialisasi Project Knowledge di Session State jika Belum Ada
+if "knowledge_content" not in st.session_state:
+    st.session_state["knowledge_content"] = get_combined_project_knowledge()
 
 # Cek API Key dari secrets (jika ada), jika tidak ada gunakan input sidebar
 api_key = None
@@ -67,18 +88,15 @@ if not api_key:
 
 client = anthropic.Anthropic(api_key=api_key)
 
-# Load Konten dari Folder knowledge/
-knowledge_content = load_project_knowledge("knowledge")
-
-# 2. System Prompt Final (Menggabungkan Prompt Inti + Project Knowledge Dinamis)
+# BASE SYSTEM PROMPT
 BASE_SYSTEM_PROMPT = """
 [PERAN DAN IDENTITAS]
 Kamu adalah "ATD Communication Evaluator". Tugas utama kamu adalah menilai tingkat kemahiran (proficiency level) pengguna pada kompetensi "Communication" ATD melalui SIMULASI PERCAKAPAN DINAMIS (BLIND ROLEPLAY) berbasis studi kasus bisnis nyata.
 
 [CASE LIBRARY INSTRUCTION]
-Kamu memiliki akses ke dokumen studi kasus bisnis dan referensi standar TDBoK di dalam [DYNAMIC PROJECT KNOWLEDGE] di bawah.
-- Di awal setiap sesi baru, pilih 1 latar belakang krisis bisnis dari studi kasus yang tersedia secara acak.
-- Kombinasikan juga secara acak peran kamu (Atasan Impasien / Rekan Kerja Resisten / Klien Eksternal Kritis) dan nada emosi awal (Skeptis / Kecewa / Cemas / Terdesak Waktu).
+Kamu memiliki akses ke dokumen studi kasus bisnis terpilih dan referensi standar TDBoK di dalam [DYNAMIC PROJECT KNOWLEDGE] di bawah.
+- Gunakan latar belakang krisis bisnis dari studi kasus yang disediakan untuk memicu simulasi.
+- Kombinasikan secara acak peran kamu (Atasan Impasien / Rekan Kerja Resisten / Klien Eksternal Kritis) dan nada emosi awal (Skeptis / Kecewa / Cemas / Terdesak Waktu).
 
 [ATURAN UTAMA - BLIND EVALUATION]
 1. DILARANG menyebutkan nama 8 indikator ATD, label skill, atau menginformasikan bahwa kamu sedang menguji area spesifik.
@@ -122,26 +140,25 @@ Gunakan acuan teoritis TDBoK 2nd Edition berikut saat mengamati dan menilai resp
 Setelah percakapan selesai (kamu mengakhiri roleplay), sajikan "ATD Communication Scorecard" secara lengkap yang mencakup Skor Level (1-5) ke-8 Skill Statements beserta catatan observasi spesifik, Overall Rating, Critical Gap Analysis, dan Rekomendasi Pelatihan.
 """
 
-# Penggabungan System Prompt Inti dengan seluruh file dari folder knowledge/
+# Penggabungan System Prompt Inti dengan Knowledge Terpilih
 FINAL_SYSTEM_PROMPT = f"""
 {BASE_SYSTEM_PROMPT}
 
-[DYNAMIC PROJECT KNOWLEDGE - DOKUMEN REFERENSI & STUDI KASUS]
-{knowledge_content}
+[DYNAMIC PROJECT KNOWLEDGE - DOKUMEN REFERENSI & STUDI KASUS TERPILIH]
+{st.session_state["knowledge_content"]}
 """
 
-# 3. Inisialisasi Riwayat Obrolan
+# Inisialisasi Riwayat Obrolan
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 4. Tampilkan Riwayat Pesan di UI
+# Tampilkan Riwayat Pesan di UI
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# 5. Penanganan Pesan Masuk dari Pengguna
+# Penanganan Pesan Masuk dari Pengguna
 if prompt := st.chat_input("Ketik respons Anda di sini..."):
-    # Tampilkan pesan pengguna di UI
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -155,7 +172,6 @@ if prompt := st.chat_input("Ketik respons Anda di sini..."):
             for m in st.session_state.messages
         ]
         
-        # Generator Streaming
         def generate_stream():
             with client.messages.stream(
                 model="claude-sonnet-5",
@@ -170,19 +186,29 @@ if prompt := st.chat_input("Ketik respons Anda di sini..."):
         
     st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-# Tombol Reset Simulasi
+# --- SIDEBAR CONTROL & INDIKATOR ---
+st.sidebar.title("🎮 Control Panel")
+
+# Tampilkan Informasi Kasus yang Sedang Terpilih
+if "selected_case_name" in st.session_state:
+    st.sidebar.info(f"📄 **Studi Kasus Aktif:**\n{st.session_state['selected_case_name']}")
+
+# Tombol Reset Simulasi & Acak Ulang Studi Kasus
 if st.sidebar.button("🔄 Mulai Sesi Baru"):
     st.session_state.messages = []
+    st.session_state["knowledge_content"] = get_combined_project_knowledge()
     st.rerun()
 
 # Tampilan Indikator File Knowledge di Sidebar
-with st.sidebar.expander("📁 Loaded Knowledge Files"):
-    if os.path.exists("knowledge"):
-        files = [f for f in os.listdir("knowledge") if not f.startswith(".")]
-        if files:
-            for f in files:
-                st.write(f"✅ {f}")
-        else:
-            st.warning("Folder knowledge kosong!")
+with st.sidebar.expander("📁 Structure Status"):
+    if os.path.exists(TDBOK_FOLDER):
+        tdbok_files = [f for f in os.listdir(TDBOK_FOLDER) if f.endswith(".pdf")]
+        st.write(f"📘 **TDBoK Ref:** {len(tdbok_files)} file")
     else:
-        st.error("Folder knowledge tidak ditemukan!")
+        st.warning(f"Folder '{TDBOK_FOLDER}' tidak ditemukan!")
+
+    if os.path.exists(CASES_FOLDER):
+        case_files = [f for f in os.listdir(CASES_FOLDER) if f.endswith(".pdf")]
+        st.write(f"📚 **Case Library:** {len(case_files)} file")
+    else:
+        st.warning(f"Folder '{CASES_FOLDER}' tidak ditemukan!")
